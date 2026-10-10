@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Mapping
+from pathlib import Path
 
 try:
     from .admission import Admission
@@ -86,6 +87,26 @@ def _plugin_setting(name, default=None):
             return default
         value = value[segment]
     return value
+
+
+def inert_mcp_path():
+    """``inert_mcp.py`` from the active profile's own plugin install, else this module's directory.
+
+    ``Path(__file__)`` names only the copy this process happened to import, so a host serving
+    several profiles in one process (a gateway or the Desktop app switching HERMES_HOME between
+    turns) would hand the child CLI a foreign profile's helper. ``get_hermes_home()`` follows the
+    active profile (context override → ``HERMES_HOME`` → platform default), so prefer the copy
+    installed under it and keep our own directory as the fallback for a plugin installed outside
+    the profile tree.
+    """
+    try:
+        from hermes_constants import get_hermes_home
+        candidate = get_hermes_home() / "plugins" / PLUGIN_ID / "inert_mcp.py"
+        if candidate.is_file():
+            return candidate
+    except Exception:
+        pass
+    return Path(__file__).with_name("inert_mcp.py")
 
 
 def telemetry_enabled():

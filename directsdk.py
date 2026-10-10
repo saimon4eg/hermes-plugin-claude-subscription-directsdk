@@ -26,12 +26,12 @@ try:
     from .admission import Admission
     from .model_catalog import accepts_thinking_disable, native_model, supports_adaptive_thinking
     from .directsdk_setup import (INSTALL_HINT, LOGGED_OUT_HINT, _resolve as resolve_claude, apply_traffic_policy,
-                                  upstream_override)
+                                  inert_mcp_path, upstream_override)
 except ImportError:
     from admission import Admission
     from model_catalog import accepts_thinking_disable, native_model, supports_adaptive_thinking
     from directsdk_setup import (INSTALL_HINT, LOGGED_OUT_HINT, _resolve as resolve_claude, apply_traffic_policy,
-                                 upstream_override)
+                                 inert_mcp_path, upstream_override)
 
 
 # Hermes picks retry vs fallback from an error's status_code (main loop and auxiliary ladder alike).
@@ -595,7 +595,7 @@ class Client:
             with tempfile.TemporaryDirectory(prefix='claude-directsdk-', ignore_cleanup_errors=True) as tmp:
                 root = Path(tmp)
                 (root / 'tools.json').write_text(json.dumps(manifest), encoding='utf-8')
-                mcp = {'mcpServers': {'hermes': {'command': sys.executable, 'args': [str(Path(__file__).with_name('inert_mcp.py')), str(root / 'tools.json')]}}}
+                mcp = {'mcpServers': {'hermes': {'command': sys.executable, 'args': [str(inert_mcp_path()), str(root / 'tools.json')]}}}
                 env = _with_windows_essentials(dict(self.env if self.env is not None else os.environ))
                 upstream_base_url, upstream_api_key = upstream_override()
                 if self.env is None:
