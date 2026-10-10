@@ -1,6 +1,6 @@
 name: claude-subscription-directsdk-experimental
 kind: model-provider
-version: 0.3.3
+version: 0.3.4
 manifest_version: 2
 description: Claude Subscription DirectSDK (Experimental) — drive your Claude Pro/Max subscription through the official Claude Code CLI; Hermes owns tools, approvals and compaction
 author: Nous Research
@@ -26,3 +26,21 @@ config_schema:
       Let Claude Code send its usage telemetry and fetch feature flags. Feature flags unlock newer
       models in the model picker; turn off to keep Claude Code quiet (the picker may then list fewer
       models).
+  upstream_base_url:
+    type: str
+    default: ""
+    label: Upstream gateway base URL
+    description: >-
+      Route this provider through an LLM gateway or proxy instead of api.anthropic.com, for example
+      a local aiproxy at http://localhost:8081. Must be HTTPS, or plain HTTP on a loopback host.
+      With it set, an ANTHROPIC_BASE_URL/ANTHROPIC_API_KEY in Hermes' environment counts as
+      intentional rather than conflicting, and the CLI authenticates to the gateway with
+      upstream_api_key. Leave empty to talk to Anthropic directly with the CLI's own login.
+  upstream_api_key:
+    type: str
+    default: ""
+    label: Gateway credential for the CLI
+    description: >-
+      Value handed to Claude Code as ANTHROPIC_API_KEY when a gateway base URL is set. A gateway
+      that substitutes its own credential — an aiproxy holding a subscription OAuth token, say —
+      accepts any placeholder here, so no real Anthropic credential is needed inside the CLI.

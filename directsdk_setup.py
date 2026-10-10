@@ -54,6 +54,10 @@ def _resolve(command, env):
 # config.yaml (plugin.yaml `config_schema`; Desktop → Capabilities → Plugins, or `hermes config set`).
 PLUGIN_ID = "claude-subscription-directsdk-experimental"
 TELEMETRY_SETTING = "claude_code_telemetry"
+# Optional LLM gateway in front of Anthropic (e.g. a local aiproxy holding the subscription
+# token). Empty means talk to api.anthropic.com with the CLI's own login, as before.
+UPSTREAM_BASE_URL_SETTING = "upstream_base_url"
+UPSTREAM_API_KEY_SETTING = "upstream_api_key"
 # Any one of these turns off Claude Code's feature-flag fetch, and with it every model its picker
 # only offers through a flag (#86: 11 models become 5). Off only when the user turns the setting off.
 QUIET_TRAFFIC = {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "DISABLE_TELEMETRY": "1", "DISABLE_ERROR_REPORTING": "1"}
@@ -65,25 +69,49 @@ ALWAYS_QUIET = {"DISABLE_AUTOUPDATER": "1", "DISABLE_FEEDBACK_COMMAND": "1"}
 _OFF = ("false", "0", "no", "off")
 
 
-def telemetry_enabled():
-    """The ``claude_code_telemetry`` plugin setting, default on.
+def _plugin_setting(name, default=None):
+    """Read ``plugins.entries.<plugin>.settings.<name>`` from the active profile.
 
-    Read from the active profile's config on every call (``load_config_readonly`` resolves
-    ``get_hermes_home()`` per call and caches on the file signature), so a multi-profile gateway
-    honors each profile's choice and a change applies to the next spawn without a restart.
+    Uses the same per-call ``load_config_readonly`` path as :func:`telemetry_enabled`, so a
+    multi-profile gateway honors each profile's value and a change applies to the next request
+    without a restart.
     """
     try:
         from hermes_cli.config import load_config_readonly
         value = load_config_readonly()
     except Exception:
-        return True
-    for segment in ("plugins", "entries", PLUGIN_ID, "settings", TELEMETRY_SETTING):
+        return default
+    for segment in ("plugins", "entries", PLUGIN_ID, "settings", name):
         if not isinstance(value, Mapping) or segment not in value:
-            return True
+            return default
         value = value[segment]
+    return value
+
+
+def telemetry_enabled():
+    """The ``claude_code_telemetry`` plugin setting, default on."""
+    value = _plugin_setting(TELEMETRY_SETTING, True)
     if isinstance(value, str):
         return value.strip().lower() not in _OFF
     return value is not False and value != 0
+
+
+def upstream_override():
+    """``(base_url, api_key)`` for an LLM gateway in front of Anthropic, else ``("", "")``.
+
+    With ``upstream_base_url`` set, this provider sends its traffic to that endpoint instead of
+    ``api.anthropic.com`` and treats an ``ANTHROPIC_BASE_URL``/``ANTHROPIC_API_KEY`` in Hermes'
+    environment as intentional rather than as a conflicting override. That is what makes a local
+    gateway usable: the native CLI authenticates to it with ``upstream_api_key`` (any placeholder
+    when the gateway substitutes its own credential) and the gateway holds the real one, so no
+    Anthropic credential is needed inside the CLI.
+
+    ``admission.Admission`` accepts an HTTPS upstream, or plain HTTP on a loopback host — the same
+    shape a gateway on ``http://localhost:<port>`` has.
+    """
+    base = _plugin_setting(UPSTREAM_BASE_URL_SETTING)
+    key = _plugin_setting(UPSTREAM_API_KEY_SETTING)
+    return (base.strip() if isinstance(base, str) else ""), (key.strip() if isinstance(key, str) else "")
 
 
 def apply_traffic_policy(env, telemetry=None):

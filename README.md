@@ -81,6 +81,19 @@ Auxiliary/fallback routing remains owned by Hermes. Configure those routes expli
 
 The relay opens the upstream connection itself, so it applies native's proxy variables from the Hermes process environment: `https_proxy`/`HTTPS_PROXY`, then `http_proxy`/`HTTP_PROXY`, with `NO_PROXY` exceptions (standard-library matching; comma- or space-separated). The proxy must be an `http://` CONNECT proxy; `user:pass@` in its URL becomes a `Proxy-Authorization` header. TLS still terminates at `api.anthropic.com`, so the subscription bearer never reaches the proxy. A SOCKS or TLS-to-proxy URL is ignored with a warning and the relay connects directly, as it did before proxy support.
 
+### Upstream gateway (`upstream_base_url`)
+
+Set the **Upstream gateway base URL** setting to send this provider through an LLM gateway or proxy instead of `api.anthropic.com` — a local [aiproxy](https://github.com/saimon4eg/aiproxy) holding the subscription token, for instance. The value must be HTTPS, or plain HTTP on a loopback host (`http://localhost:8081`), which is what `admission.Admission` accepts for a fixture.
+
+While it is set, an `ANTHROPIC_BASE_URL`/`ANTHROPIC_API_KEY` in Hermes' environment counts as intentional rather than as the conflicting override it is otherwise. That is the whole point: the native CLI authenticates to the gateway with the **Gateway credential** setting (a placeholder when the gateway substitutes its own credential), so the real Anthropic credential lives in the gateway and the machine running Hermes needs no Claude login at all. Cloud-backend flags (`CLAUDE_CODE_USE_BEDROCK`/`_VERTEX`/`_FOUNDRY`) are never waived.
+
+```sh
+hermes config set plugins.entries.claude-subscription-directsdk-experimental.settings.upstream_base_url http://localhost:8081
+hermes config set plugins.entries.claude-subscription-directsdk-experimental.settings.upstream_api_key local
+```
+
+A gateway in front of Anthropic must forward `anthropic-beta` verbatim (the OAuth capability in it is what authenticates the subscription), must not buffer the SSE response, and must pass the `system` array through unchanged. Leave the setting empty to talk to Anthropic directly with the CLI's own login.
+
 ## Settings
 
 **Claude Code telemetry and feature flags** (`claude_code_telemetry`, on by default). Claude Code sends its usage telemetry and fetches feature flags; the flags are what unlock newer and older models in its model picker, so with them off the picker can shrink from every model your account runs to each family's current one (#86). Turn it off to keep Claude Code quiet: the plugin then starts it with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY` and `DISABLE_ERROR_REPORTING` set, and the pinned model table fills in the picker. Change it in the Desktop app under **Capabilities → Plugins**: the settings gear on the `claude-subscription-directsdk-experimental` row opens the switch. Or from the CLI:

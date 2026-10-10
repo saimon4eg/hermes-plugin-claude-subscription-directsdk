@@ -25,11 +25,13 @@ from types import SimpleNamespace
 try:
     from .admission import Admission
     from .model_catalog import accepts_thinking_disable, native_model, supports_adaptive_thinking
-    from .directsdk_setup import INSTALL_HINT, LOGGED_OUT_HINT, _resolve as resolve_claude, apply_traffic_policy
+    from .directsdk_setup import (INSTALL_HINT, LOGGED_OUT_HINT, _resolve as resolve_claude, apply_traffic_policy,
+                                  upstream_override)
 except ImportError:
     from admission import Admission
     from model_catalog import accepts_thinking_disable, native_model, supports_adaptive_thinking
-    from directsdk_setup import INSTALL_HINT, LOGGED_OUT_HINT, _resolve as resolve_claude, apply_traffic_policy
+    from directsdk_setup import (INSTALL_HINT, LOGGED_OUT_HINT, _resolve as resolve_claude, apply_traffic_policy,
+                                 upstream_override)
 
 
 # Hermes picks retry vs fallback from an error's status_code (main loop and auxiliary ladder alike).
@@ -595,8 +597,16 @@ class Client:
                 (root / 'tools.json').write_text(json.dumps(manifest), encoding='utf-8')
                 mcp = {'mcpServers': {'hermes': {'command': sys.executable, 'args': [str(Path(__file__).with_name('inert_mcp.py')), str(root / 'tools.json')]}}}
                 env = _with_windows_essentials(dict(self.env if self.env is not None else os.environ))
+                upstream_base_url, upstream_api_key = upstream_override()
                 if self.env is None:
-                    conflicts = [key for key in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_FOUNDRY_API_KEY') if env.get(key)]
+                    # A configured gateway (``upstream_base_url``) makes an Anthropic endpoint and
+                    # credential in the environment intentional: the CLI authenticates to the
+                    # gateway, which substitutes the real credential. Without one, an inherited
+                    # endpoint or key would silently bypass the subscription login, so it stays a
+                    # hard error. Cloud-backend flags are never waived.
+                    waived = {'ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY'} if upstream_base_url else set()
+                    conflicts = [key for key in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_FOUNDRY_API_KEY')
+                                 if env.get(key) and key not in waived]
                     conflicts += [key for key in ('CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY') if env.get(key, '').lower() not in ('', '0', 'false', 'no', 'off')]
                     if conflicts:
                         raise ValueError('OAuth provider refuses conflicting native auth/backend overrides: ' + ', '.join(conflicts))
@@ -615,6 +625,13 @@ class Client:
                 apply_traffic_policy(env)
                 # Hermes owns budgets; native's replayed reminder invalidates cached history.
                 env['CLAUDE_CODE_TOTAL_TOKENS_REMINDER'] = 'off'
+                # Explicit gateway override: point the relay (and, via the line below, the CLI) at
+                # it. The CLI authenticates with upstream_api_key; the gateway substitutes the real
+                # credential, so no Anthropic login is needed where Hermes runs native.
+                if upstream_base_url:
+                    env['ANTHROPIC_BASE_URL'] = upstream_base_url
+                    if upstream_api_key:
+                        env['ANTHROPIC_API_KEY'] = upstream_api_key
                 # The queried frame lets the relay keep the cache breakpoint off native's per-request context.
                 request.admission = Admission(env.get('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'), timeout, queried=frames[-1]['message']['content'])
                 env['ANTHROPIC_BASE_URL'] = request.admission.url

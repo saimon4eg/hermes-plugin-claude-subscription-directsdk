@@ -124,6 +124,13 @@ def test_manifest_declares_the_setting_under_the_key_the_code_reads():
     import directsdk_setup
     root = Path(directsdk_setup.__file__).resolve().parent
     assert directsdk_setup.PLUGIN_ID == PLUGIN_NAME
-    (field,) = plugin_settings_fields(PLUGIN_NAME, root)
-    assert field["key"] == directsdk_setup.TELEMETRY_SETTING
-    assert field["type"] == "boolean" and field["default"] is True
+    fields = {field["key"]: field for field in plugin_settings_fields(PLUGIN_NAME, root)}
+
+    telemetry = fields[directsdk_setup.TELEMETRY_SETTING]
+    assert telemetry["type"] == "boolean" and telemetry["default"] is True
+
+    # The gateway settings the code reads must be declared too, typed as strings and empty by
+    # default (no gateway configured == talk to Anthropic directly, as before).
+    for key in (directsdk_setup.UPSTREAM_BASE_URL_SETTING, directsdk_setup.UPSTREAM_API_KEY_SETTING):
+        field = fields[key]
+        assert field["type"] == "string" and field["default"] == ""
